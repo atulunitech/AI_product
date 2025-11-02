@@ -90,15 +90,15 @@
   </button>
 
   <!-- Re-upload Button (only on failure) -->
-  <button
+  <!-- <button
     mat-button
     class="action-btn white-icon"
-    *ngIf="fileStatus[file.name]?.status === 'failed'"
+    *ngIf="fileStatus[file.name]?.status !== 'success' && fileStatus[file.name]?.status !== 'uploading'"
     (click)="reuploadFile(i)"
   >
     <mat-icon>refresh</mat-icon>
     Re-upload
-  </button>
+  </button> -->
 </ng-container>
 
 <ng-template #downloadBtn>
@@ -146,7 +146,7 @@
 
 
 
-<button (click)="uploadAll()" [disabled]="allFilesUploaded">
+<button (click)="uploadAll()" [disabled]="allFilesUploaded || files.length !== msg.options?.length">
   🚀 Upload All
 </button>
 
