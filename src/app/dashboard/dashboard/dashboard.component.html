@@ -29,21 +29,41 @@
 </ng-container>
 <ng-container *ngIf="msg.upload_file === 1">
 <div class="file-upload">
-  <div style="display: flex;">
-    <div class="file-list" >
-       <div>Listed File</div>
+  <div style="display: flex
+;
+    flex-direction: row;
+    justify-content: space-between;
+    height: 377px;
+    overflow: scroll;">
+    <div class="file-list" style="display: flex
+;margin-right: 10px;
+    flex-direction: column;
+  ">
+       <div style="padding-bottom: 19px;
+
+    z-index: 2;
+    background-color: #232323;">Listed File</div>
        <div class="file-ul">
           <div *ngFor="let item of msg.options; let j = index" class="file-item_wrap"
             (click)="file_upload()"
             >
-            <div class="file-info">
+            <div class="file-info" style="height: 24px;
+    display: flex;
+    width: 210px;
+    align-items: center;">
            <span class="file-name"> {{ item.display_text }}</span>
           </div>
           </div>
        </div>
         </div>
-        <div class="file-list" *ngIf="files.length > 0">
-  <div>Uploaded File</div>
+        <div class="file-list" style="display: flex
+;
+    flex-direction: column;
+   " *ngIf="files.length > 0">
+  <div style="padding-bottom: 19px;
+   
+    z-index: 2;
+    background-color: #232323;">Uploaded File</div>
 
   <div cdkDropList (cdkDropListDropped)="drop($event)" class="file-ul">
   <div *ngFor="let file of files; let i = index" cdkDrag class="file-item_wrap" 
@@ -148,8 +168,8 @@
 
 
 
-<button (click)="uploadAll()" [disabled]="allFilesUploaded || files.length !== msg.options?.length">
-  🚀 Upload All
+<button (click)="uploadAll()" class="upload-btn" [disabled]="allFilesUploaded || files.length !== msg.options?.length">
+   Upload All
 </button>
 
           </div>
