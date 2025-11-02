@@ -125,12 +125,21 @@ export class DashboardComponent {
     const node = this.currentNode();
     return node.end ? node.end : (node ?? '');
   }
-handleOptionSelect(option: any) {
-  console.log("option", option);
-  console.log("currentNode", this.currentNode());
- if(this.currentNode().upload_file === 1){
-  alert("jkjdf")
- }
+handleOptionSelect(option: any, msgIndex: number, optIndex: number) {
+  // disable options for this message so previous options can't be clicked again
+  this.messages.update((m) => {
+    const updated = [...m];
+    if (updated[msgIndex]) {
+      updated[msgIndex] = { ...updated[msgIndex], optionsDisabled: true };
+    }
+    return updated;
+  });
+
+  console.log('option', option);
+  console.log('currentNode', this.currentNode());
+  if (this.currentNode().upload_file === 1) {
+    alert('jkjdf');
+  }
   this.getOptions_bot_fun(option, this.currentNode());
 }
 file_upload(){
@@ -200,8 +209,8 @@ this._shared_service.getOptions_bot({ key: node.recordID, optionSelected: option
     // console.log("kkkkkk", this.messages())
     const index = this.messages().length - 1;
 
-    const typingDuration = 1000;
-    const dotInterval = 300;
+    const typingDuration = 10;
+    const dotInterval = 10;
     let elapsed = 0;
 
     while (elapsed < typingDuration) {
