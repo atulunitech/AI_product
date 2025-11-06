@@ -462,8 +462,8 @@ export class DashboardComponent {
     for (let i = 0; i < filesToUpload.length; i++) {
       const file = filesToUpload[i];
       const index = this.files.findIndex(f => f.name === file.name);
-      const fileOption = this.currentNode().options[index];
-      const file_type = fileOption?.file_type || 'EXCEL';
+      const baseName = file.name.substring(0, file.name.lastIndexOf('.'));
+const file_type = baseName.toUpperCase() || 'EXCEL';
 
       this.fileStatus[file.name].status = 'uploading';
 
