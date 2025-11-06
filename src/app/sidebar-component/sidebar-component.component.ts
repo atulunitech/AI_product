@@ -1,6 +1,8 @@
 import { OnInit, ChangeDetectorRef, Component, ElementRef, HostListener, signal } from '@angular/core';
 import { SharedService } from '../shared/shared.service';
 import { CookieService } from 'ngx-cookie-service';
+import { AuthService } from '../auth/auth.service';
+import { Router } from '@angular/router';
 
 interface MenuItem {
   project_name: string,
@@ -31,7 +33,7 @@ export class SidebarComponent implements OnInit {
     { label: 'Sign Out', icon: 'logout', link: '/logout' }
   ];
 
-  constructor(private elRef: ElementRef, private _shared_service: SharedService, private cookieService: CookieService) { }
+  constructor(private elRef: ElementRef, private _shared_service: SharedService, private _authService :AuthService,private router:Router, private cookieService: CookieService) { }
 
   ngOnInit(): void {
     this.loadItems("");
@@ -52,10 +54,20 @@ export class SidebarComponent implements OnInit {
   }
   onMenuClick(item: any) {
     if (item?.label == "Sign Out") {
+         this.cookieService.delete('access_token', '/', '.mlldev.com');
+     
+       this._authService.user.next(null);
+    this.router.navigate(['']);
+    localStorage.removeItem("loggedin user data");
       this._shared_service.logOutUser(this.cookieService.get('session_id')).subscribe({
         next: (response: any) => {
-          this.cookieService.deleteAll()
-          window.location.href = "/"
+          // this.cookieService.deleteAll()
+          // window.location.href = "/"
+            this.cookieService.delete('access_token', '/', '.mlldev.com');
+        console.log(response, "logout done");
+       this._authService.user.next(null);
+    this.router.navigate(['']);
+    localStorage.removeItem("loggedin user data");
         },
         error: (err) => {
           this.cookieService.deleteAll()
@@ -72,7 +84,7 @@ export class SidebarComponent implements OnInit {
         this.menuItems.set([...this.menuItems(), ...menus.map(e => ({
           ...e,
           icon: '',
-          link: `/backend/${e._id}`
+          link: `/backend/Dashboard/${e._id}`
         }))])
       },
       error: (err) => {
