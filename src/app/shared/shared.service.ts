@@ -165,6 +165,35 @@ export class SharedService {
         })
       )
   }
+  downloadFile(fileName:string) {
+    const body = {
+      fileName: fileName
+    }
+    return this.http.post(this.API_URL + `v1/analysis/downloadFileFromBlob`, body, {
+      responseType: 'blob',
+      observe: 'response' // 👈 Important
+    }).pipe(
+      catchError(err => {
+        console.log(err,)
+        // this.errorHandler(err)
+        return this.err_hand(err);
+
+      })
+    )
+  }
+  downloadTemplates() {
+    return this.http.get(this.API_URL + `v1/analysis/downloadTemplates`, {
+      responseType: 'blob',
+      observe: 'response' // 👈 Important
+    }).pipe(
+      catchError(err => {
+        console.log(err,)
+        // this.errorHandler(err)
+        return this.err_hand(err);
+
+      })
+    )
+  }
   getProjectDetails(id: string) {
     return this.http.post<any>(this.API_URL + `v1/analysis/getProjectDetails`, { recordID: id })
       .pipe(
@@ -201,6 +230,9 @@ export class SharedService {
       )
   }
 
+  uploadChunk(formData: FormData) {
+    return this.http.post<any>(this.API_URL + `v1/analysis/uploadFileInChunks`, formData)
+  }
 
   uploadfile(data) {
 

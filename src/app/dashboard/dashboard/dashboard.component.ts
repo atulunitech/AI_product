@@ -5,8 +5,10 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { SharedService } from '../../shared/shared.service';
 import { CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-
+import { firstValueFrom } from 'rxjs';
 import * as XLSX from 'xlsx';
+
+const CHUNK_SIZE = 8 * 1024 * 1024; // 8mb
 
 /** Message type */
 interface Message {
@@ -69,17 +71,29 @@ export class DashboardComponent {
         document.body.removeChild(a);
       }, 100);
     }
-    else {
-
+    else if (Object.hasOwn(file, "path")) {
+      this._shared_service.downloadFile(file["path"]).subscribe(response => {
+        const blob = response.body as Blob;
+        let filename = file["name"];
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      });
     }
   }
-  files: File[] = [];
+  files: any[] = [];
   excelData: any[] = [];
   fileStatus: { [key: string]: { status: 'pending' | 'uploading' | 'success' | 'failed', reason?: string } } = {};
   safeHtml: SafeHtml = '';
   // Track the order and state of file uploads
   uploadOrder: string[] = [];
   uploadInProgress = false;
+  isUploading = false; // Track when files are being uploaded
   replaceIndex: number | null = null;
   allFilesUploaded: boolean = false;
   disabledSubmit: boolean = true
@@ -111,7 +125,8 @@ export class DashboardComponent {
       if (res) {
         if (res.data) {
           const messages = []
-          JSON.parse(res.data).forEach(obj => {
+          const data = JSON.parse(res.data)
+          data.forEach((obj, i) => {
             if (!!obj["display_message"]) {
               if (obj.confirmation_message === 1) {
                 obj.response.confirmation_message = this.sanitizer.bypassSecurityTrustHtml(obj.response.confirmation_message)
@@ -122,7 +137,7 @@ export class DashboardComponent {
                 obj.options.forEach(element => {
                   if (!!res.project_details[element.file_type]) {
                     const name = res.project_details[element.file_type]?.split('/').pop()
-                    files.push({ name })
+                    files.push({ name, path: res.project_details[element.file_type] })
                     filesUpload[name] = {
                       status: 'success',
                       reason: ''
@@ -134,7 +149,7 @@ export class DashboardComponent {
                 if (files.length == obj.options.length)
                   this.allFilesUploaded = true
               }
-              messages.push({
+              const botMessage = {
                 "from": "bot",
                 "text": obj["display_message"],
                 "message": "",
@@ -145,7 +160,12 @@ export class DashboardComponent {
                 "enable_chat": 0,
                 "is_file": obj["is_file"],
                 "confirmation_message": obj["confirmation_message"]
-              })
+              }
+              if (i == data.length - 1 && obj.input_type == "options" && obj["options"].length > 0)
+                botMessage["optionsDisabled"] = false
+              else
+                botMessage["optionsDisabled"] = true
+              messages.push(botMessage)
             }
             if (!!obj["user_input"]) {
               messages.push({
@@ -186,7 +206,7 @@ export class DashboardComponent {
             // this.FLOW.update(value => [...value, res])
             // console.log("flow", this.FLOW());
             // console.log('FLOW loaded:', this.FLOW());
-            this.pushBot(res, '');
+            this.pushBot(res);
 
           } else {
             console.log('Invalid flow response:', res);
@@ -206,7 +226,6 @@ export class DashboardComponent {
     return node.end ? node.end : (node ?? '');
   }
   handleOptionSelect(option: any, msgIndex: number, optIndex: number) {
-    // disable options for this message so previous options can't be clicked again
     this.messages.update((m) => {
       const updated = [...m];
       if (updated[msgIndex]) {
@@ -215,10 +234,12 @@ export class DashboardComponent {
       return updated;
     });
 
-    console.log('option', option);
-    console.log('currentNode', this.currentNode());
-
     this.getOptions_bot_fun(option, this.currentNode());
+
+    setTimeout(() => {
+      const scrollMe = document.querySelector('.chat-container') as HTMLElement;
+      if (scrollMe) scrollMe.scrollTop = scrollMe.scrollHeight;
+    }, 100);
   }
   file_upload() {
     console.log("file upload called")
@@ -242,12 +263,43 @@ export class DashboardComponent {
         // this.FLOW.update(value => [...value, res])
         // Push the full response object so the message contains response URLs and other metadata
         this.pushBot(res);
+        if (!!res.redirect)
+          setTimeout(() => {
+            this.router.navigate([res.redirect])
+          }, 1000)
         console.log("messages after bot", this.messages())
 
 
 
       }
     })
+  }
+  private getFileNameFromHeaders(res: any): string | null {
+    // You can later modify this if your backend sends headers with filename
+    return null;
+  }
+  download_all_temp() {
+    this._shared_service.downloadTemplates().subscribe(response => {
+      const blob = response.body as Blob;
+
+      const contentDisposition = response.headers.get('content-disposition');
+      let filename = 'Templates.zip';
+      if (contentDisposition) {
+        const match = /filename="?([^"]+)"?/.exec(contentDisposition);
+        if (match?.[1]) {
+          filename = match[1];
+        }
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    });
   }
   onAnswer(choice: string, key: string, msg: any) {
     console.log("msg", msg)
@@ -294,9 +346,10 @@ export class DashboardComponent {
   }
 
 
-  private async pushBot(fullText: any, options?: any) {
+  private async pushBot(fullText: any) {
     console.log('fullText', fullText)
     if (fullText.input_type === 'user_input') {
+      console.log("fullText_typeing", fullText)
       this.input_view = true
     }
     if (fullText.input_type === "options") {
@@ -306,7 +359,8 @@ export class DashboardComponent {
     }
     // Normalize fullText: if it's a string, wrap it into an object with display_message
     const payload = (typeof fullText === 'string' || fullText instanceof String) ? { display_message: fullText } : (fullText || {});
-    this.messages.update((m) => [...m, { from: 'bot', text: 'typing', ...payload }]);
+    const { options, ...rest } = payload;
+    this.messages.update((m) => [...m, { from: 'bot', text: 'typing', options: [], ...rest }]);
     // console.log("kkkkkk", this.messages())
     const index = this.messages().length - 1;
 
@@ -340,7 +394,21 @@ export class DashboardComponent {
         updated[index] = { ...updated[index], text: current };
         return updated;
       });
+
       await new Promise((res) => setTimeout(res, typingSpeed));
+      if (i == finalText?.length - 1) {
+        setTimeout(() => {
+          this.messages.update((m) => {
+            const updated = [...m];
+            updated[index] = { ...updated[index], options }
+            return updated;
+          });
+          setTimeout(() => {
+            const scrollMe = document.querySelector('.chat-container') as HTMLElement;
+            if (scrollMe) scrollMe.scrollTop = scrollMe.scrollHeight;
+          }, 100);
+        }, typingSpeed)
+      }
     }
 
     // If there was no typing animation (empty finalText), ensure message shows the content
@@ -351,11 +419,14 @@ export class DashboardComponent {
         return updated;
       });
     }
-    console.log('messages', this.messages());
   }
 
   private pushUser(text: string) {
     this.messages.update((m) => [...m, { from: 'user', text, ts: Date.now(), options: [], key: '', upload_file: 0, file_view: 0 }]);
+    setTimeout(() => {
+      const scrollMe = document.querySelector('.chat-container') as HTMLElement;
+      if (scrollMe) scrollMe.scrollTop = scrollMe.scrollHeight;
+    }, 100);
   }
 
 
@@ -410,10 +481,10 @@ export class DashboardComponent {
       this.files = [...this.files, ...validFiles];
     }
     // Fix ExpressionChangedAfterItHasBeenCheckedError by updating scroll after change
-    setTimeout(() => {
-      const scrollMe = document.querySelector('.chat-container') as HTMLElement;
-      if (scrollMe) scrollMe.scrollTop = scrollMe.scrollHeight;
-    });
+    // setTimeout(() => {
+    //   const scrollMe = document.querySelector('.chat-container') as HTMLElement;
+    //   if (scrollMe) scrollMe.scrollTop = scrollMe.scrollHeight;
+    // });
   }
 
   /** Read Excel and log content (optional) */
@@ -422,8 +493,13 @@ export class DashboardComponent {
   //   reader.onload = (e: any) => {
   //     const data = new Uint8Array(e.target.result);
   //     const workbook = XLSX.read(data, { type: 'array' });
-  //     const firstSheet = workbook.SheetNames[0];
   //     const worksheet = workbook.Sheets[firstSheet];
+  //     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+  //     console.log(`📘 ${file.name} content:`, jsonData);
+  //     this.excelData.push({ name: file.name, data: jsonData });
+  //   };
+  //   reader.readAsArrayBuffer(file);
+  // }
   //     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
   //     console.log(`📘 ${file.name} content:`, jsonData);
   //     this.excelData.push({ name: file.name, data: jsonData });
@@ -438,6 +514,12 @@ export class DashboardComponent {
       alert('Please select at least one Excel file.');
       return;
     }
+
+    if (this.isUploading) {
+      return; // Prevent multiple concurrent uploads
+    }
+
+    this.isUploading = true; // Set uploading flag
 
     // Only upload files that are not yet successful
     const filesToUpload = this.files.filter(file => {
@@ -458,34 +540,40 @@ export class DashboardComponent {
     let allSuccess = true;
     const uploadedFiles = [];
 
-    // Upload files sequentially
+
     for (let i = 0; i < filesToUpload.length; i++) {
       const file = filesToUpload[i];
       const index = this.files.findIndex(f => f.name === file.name);
       const baseName = file.name.substring(0, file.name.lastIndexOf('.'));
-const file_type = baseName.toUpperCase() || 'EXCEL';
+      const file_type = baseName.toUpperCase() || 'EXCEL';
 
       this.fileStatus[file.name].status = 'uploading';
-
       try {
-        // Wait for each file upload to complete before moving to next
-        const res = await this._shared_service
-          .uploadfile({
-            file,
-            file_type,
-            recordID: this.currentNode().recordID,
-          })
-          .toPromise();
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        for (let index = 0; index < totalChunks; index++) {
+          const start = index * CHUNK_SIZE;
+          const end = start + CHUNK_SIZE;
 
-        if (res.message === 'FAILED') {
-          this.fileStatus[file.name] = {
-            status: 'failed',
-            reason: res.reason
-          };
-          allSuccess = false;
-        } else {
-          this.fileStatus[file.name] = { status: 'success' };
-          uploadedFiles.push(file.name);
+          const chunk = file.slice(start, end);
+
+          const formData = new FormData();
+          formData.append('file', chunk);
+          formData.append('file_type', file_type);
+          formData.append('file_name', file.name);
+          formData.append('recordID', this.currentNode().recordID);
+          formData.append('chunk_index', index.toString());
+          formData.append('total_chunks', totalChunks.toString());
+          const response = await firstValueFrom(this._shared_service.uploadChunk(formData));
+          if (response.message === 'FAILED') {
+            this.fileStatus[file.name] = {
+              status: 'failed',
+              reason: response.reason
+            };
+            allSuccess = false;
+          } else if(response.message === 'SUCCESSFUL') {
+            this.fileStatus[file.name] = { status: 'success' };
+            uploadedFiles.push(file.name);
+          }
         }
       } catch (err: any) {
         console.error(`❌ Error uploading ${file.name}`, err);
@@ -497,18 +585,23 @@ const file_type = baseName.toUpperCase() || 'EXCEL';
         alert(`Error uploading ${file.name}: ${err && err.message ? err.message : 'Unknown error'}`);
       }
     }
+    this.isUploading = false; // Reset uploading flag when done
 
     // Check if all files are now successful
     const allNowSuccess = this.files.every(f => this.fileStatus[f.name]?.status === 'success');
     if (allNowSuccess) {
       alert('✅ All files uploaded successfully!');
       this.allFilesUploaded = true;
-      this.disabledSubmit = false
-      // Trigger next bot step
+      this.disabledSubmit = false;
+      // Automatically submit when all files are uploaded successfully
+      // this.submitFiles();
     } else {
       const successCount = this.files.filter(f => this.fileStatus[f.name]?.status === 'success').length;
       const failedCount = this.files.length - successCount;
-      // Optionally alert or update UI
+      // Show alert for partial success
+      if (successCount > 0) {
+        alert(`${successCount} files uploaded successfully. ${failedCount} files failed.`);
+      }
     }
   }
 
@@ -659,6 +752,41 @@ const file_type = baseName.toUpperCase() || 'EXCEL';
     });
   }
 
+  /** Cancel action: remove only files with failed status (keep pending/uploading/success) */
+  cancelUpload(): void {
+    // If uploading is in progress, don't allow canceling
+    if (this.isUploading) return;
+
+    // Remove only files that have status 'failed'
+    const remainingFiles: File[] = [];
+    const remainingStatus: { [key: string]: { status: 'pending' | 'uploading' | 'success' | 'failed', reason?: string } } = {};
+
+    for (const f of this.files) {
+      // Treat missing status as removable (so Cancel works when fileStatus is empty)
+      const status = this.fileStatus[f.name]?.status;
+      const isRemovable = status === 'failed' || typeof status === 'undefined';
+
+      if (!isRemovable) {
+        // keep files that are pending/uploading/success
+        remainingFiles.push(f);
+        if (this.fileStatus[f.name]) {
+          remainingStatus[f.name] = this.fileStatus[f.name];
+        }
+      } else {
+        // remove failed or unknown-status file entries
+        if (this.fileStatus[f.name]) delete this.fileStatus[f.name];
+      }
+    }
+
+    this.files = remainingFiles;
+    this.fileStatus = { ...remainingStatus };
+
+    // If after removal there are no files left, reset allFilesUploaded
+    if (this.files.length === 0) {
+      this.allFilesUploaded = false;
+    }
+  }
+
   // end
 
 
@@ -668,6 +796,8 @@ const file_type = baseName.toUpperCase() || 'EXCEL';
     console.log("message", message);
     this.pushUser(message);
     this.searchText = '';
+    this.preload_bot = true
+    this.input_view = false
     this._shared_service.getOptions_bot({ user_input: message, user_selection: '', recordID: this.currentNode().recordID }).subscribe((res) => {
       if (res) {
         if (res.confirmation_message === 1) {
@@ -676,6 +806,7 @@ const file_type = baseName.toUpperCase() || 'EXCEL';
           // console.log("safeHtml", this.safeHtml)
         }
         console.log("res", res)
+        this.preload_bot = false
         // this.FLOW.update(value => [...value, res])
         // Push the full response object so the message contains response URLs and other metadata
         this.pushBot(res);
