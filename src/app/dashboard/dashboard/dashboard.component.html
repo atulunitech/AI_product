@@ -4,6 +4,7 @@
   </div>
   <div class="chat-container" #scrollMe [scrollTop]="scrollMe.scrollHeight">
 
+    
     <div *ngFor="let msg of messages(); let i = index; trackBy: trackByMsg;"
       [ngClass]="{ 'bot': msg.from === 'bot', 'user': msg.from === 'user' }" class="message">
 
